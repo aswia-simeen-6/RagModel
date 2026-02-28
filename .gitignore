@@ -1,0 +1,13 @@
+# Security
+.env
+
+# Virtual Environments
+venv/
+env/
+
+# Python Cache
+__pycache__/
+*.pyc
+
+# Database Storage (if you are saving Chroma locally)
+chroma_db/
