@@ -1,0 +1,34 @@
+{
+    "question": [
+        "What is the capital of France?", 
+        "What is the main advantage of MMR search?",
+        "Why did we switch from FAISS to ChromaDB for this application?",
+        "How does the system process image uploads compared to PDF documents?",
+        "What chunk size and overlap is recommended for general RAG applications like reading Wikipedia articles?",
+        "What is the recipe for chocolate chip cookies?"
+    ],
+    "contexts": [
+        ["France is a beautiful country in Western Europe. The capital city of France is Paris."],
+        ["MMR (Maximal Marginal Relevance) reduces redundancy. It ensures the retrieved chunks are diverse, preventing the LLM from reading the exact same fact multiple times."],
+        ["FAISS is highly efficient for in-memory vector search but lacks native persistent storage. ChromaDB is designed as a full-featured vector database that easily supports local persistent storage to the hard drive, making it better for production applications."],
+        ["Unlike text documents which are chunked and stored in the vector database, images bypass the database entirely. They are converted to Base64 encoding and passed directly to the Gemini 2.5 Flash multimodal vision model alongside the user's prompt."],
+        ["A chunk size of 1000 characters with a 200 character overlap is the industry standard for general RAG. It captures whole thoughts and multi-paragraph explanations perfectly, while the overlap ensures that sentences and concepts are not awkwardly broken in half."],
+        []
+    ],
+    "answer": [
+        "The capital of France is Paris.", 
+        "MMR search improves accuracy by filtering out duplicate information and providing a diverse set of context chunks to the AI.",
+        "We switched to ChromaDB because it easily supports persistent local storage to a hard drive, making it more production-ready than the in-memory FAISS database.",
+        "Images bypass the vector database. They are encoded in Base64 and sent directly to the Gemini vision model.",
+        "A chunk size of 1000 with a 200 character overlap is recommended.",
+        "I do not have enough information in the provided documents to answer that."
+    ],
+    "ground_truth": [
+        "Paris.", 
+        "It filters out redundant chunks to provide diverse context.",
+        "ChromaDB supports easy persistent local storage, while FAISS is typically used in-memory.",
+        "Images bypass the vector database, are encoded in Base64, and sent directly to the LLM.",
+        "Chunk size of 1000 with 200 character overlap.",
+        "I do not have enough information in the provided documents to answer that."
+    ]
+}
