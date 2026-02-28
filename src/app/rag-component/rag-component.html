@@ -1,0 +1,81 @@
+<div class="container">
+  <h1>RAG Document Assistant</h1>
+<button (click)="clearChat()" [disabled]="isLoading()" style="background-color: #dc3545;">
+      🗑️ Clear Memory
+    </button>
+<div class="upload-section">
+    
+    <div style="margin-bottom: 15px;">
+      <strong>Option 1: Upload a PDF</strong><br/>
+      <input type="file" (change)="onFileSelected($event)" accept=".pdf" [disabled]="isLoading()" style="margin-top: 5px;" />
+    </div>
+
+    <div>
+      <strong>Option 2: Paste a Website URL</strong><br/>
+      <div style="display: flex; gap: 10px; margin-top: 5px;">
+        <input 
+          type="text" 
+          [(ngModel)]="websiteUrl" 
+          placeholder="https://en.wikipedia.org/wiki/Artificial_intelligence" 
+          [disabled]="isLoading()" 
+        />
+        <button (click)="onUrlSubmitted()" [disabled]="isLoading() || !websiteUrl">Read Site</button>
+      </div>
+    </div>
+
+    <div style="padding-top: 15px; border-top: 1px solid #ccc;">
+      <strong>Option 3: Analyze an Image (Direct Question)</strong><br/>
+      <input type="file" (change)="onImageSelected($event)" accept="image/png, image/jpeg" [disabled]="isLoading" style="margin-top: 5px;" />
+      
+      @if (imagePreviewUrl) {
+        <div style="margin-top: 10px; display: flex; align-items: flex-end; gap: 10px;">
+          <img [src]="imagePreviewUrl" alt="Preview" style="max-width: 150px; border-radius: 8px; border: 2px solid #007bff;" />
+          <button (click)="clearImage()" style="background-color: #6c757d; padding: 5px 10px; font-size: 12px;">Remove</button>
+        </div>
+      }
+    </div>
+
+    <p [class.success]="fileUploaded()" style="margin-top: 15px;">{{ uploadStatus() }}</p>
+  </div>
+
+  <hr />
+
+  @if (fileUploaded()) {
+    <div class="chat-container">
+      <div class="messages">
+        @for (msg of chatHistory(); track $index) {
+          <div [class]="'message ' + msg.sender">
+            <div class="bubble">
+              {{ msg.text }}
+              @if (msg.chartData && msg.chartData.labels.length > 0) {
+                <div class="chart-container">
+                  <canvas [id]="'chart-' + $index"></canvas>
+                </div>
+              }
+            </div>
+          </div>
+        }
+        @if (isLoading() && chatHistory().length > 1) {
+          <div class="loading-indicator">
+            Thinking...
+          </div>
+        }
+      </div>
+
+<div class="input-area">
+    <input 
+      type="text" 
+      [(ngModel)]="userQuestion" 
+      (keyup.enter)="selectedImage ? sendImageQuestion() : sendMessage()" 
+      placeholder="Ask a question about the documents, or the uploaded image..." 
+      [disabled]="isLoading()"
+    />
+    <button 
+      (click)="selectedImage ? sendImageQuestion() : sendMessage()" 
+      [disabled]="isLoading() || !userQuestion().trim()">
+      Send
+    </button>
+  </div>
+    </div>
+  }
+</div>
