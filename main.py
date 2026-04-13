@@ -2,6 +2,7 @@ import os
 import shutil
 import json
 import re
+import asyncio
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -15,6 +16,14 @@ import base64
 from fastapi import Form
 from langchain_core.messages import HumanMessage
 from dotenv import load_dotenv
+from datasets import Dataset
+from ragas import evaluate
+from ragas.metrics import (
+    Faithfulness,
+    AnswerRelevancy,
+    LLMContextPrecisionWithoutReference,
+    LLMContextRecall,
+)
 load_dotenv()  # Load environment variables from .env file
 
 app = FastAPI()
@@ -31,8 +40,20 @@ app.add_middleware(
 # Global variable to hold the vector store in memory (for demo purposes)
 vector_store = None
 
+# Shared judge LLM + embeddings for RAGAS evaluation (lazily initialized)
+_judge_llm = None
+_judge_embeddings = None
+
+def get_judge():
+    global _judge_llm, _judge_embeddings
+    if _judge_llm is None:
+        _judge_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
+        _judge_embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
+    return _judge_llm, _judge_embeddings
+
 class QuestionRequest(BaseModel):
     question: str
+    evaluate: Optional[bool] = False
 
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
@@ -188,14 +209,199 @@ JSON:"""
                 print(f"Chart extraction error: {e}")
                 chart_data = None
         
+        ragas_scores = None
+        if question_request.evaluate:
+            try:
+                ragas_scores = await asyncio.to_thread(
+                    _run_ragas_reference_free,
+                    question_request.question,
+                    answer_text,
+                    [doc.page_content for doc in docs]
+                )
+            except Exception as e:
+                print(f"RAGAS evaluation error: {e}")
+                ragas_scores = None
+
         return {
             "answer": answer_text,
             "sources": [doc.metadata.get('page', 0) for doc in docs],
-            "chartData": chart_data
+            "chartData": chart_data,
+            "scores": ragas_scores
         }
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing question: {str(e)}")
+
+# ── RAGAS Helper ──────────────────────────────────────────────────────────────
+
+def _run_ragas_reference_free(question: str, answer: str, contexts: List[str]) -> Dict[str, Any]:
+    """Run reference-free RAGAS metrics in a blocking thread."""
+    judge_llm, judge_embeddings = get_judge()
+    ds = Dataset.from_dict({
+        "question": [question],
+        "answer": [answer],
+        "contexts": [contexts],
+    })
+    result = evaluate(
+        dataset=ds,
+        metrics=[
+            LLMContextPrecisionWithoutReference(),
+            Faithfulness(),
+            AnswerRelevancy(),
+        ],
+        llm=judge_llm,
+        embeddings=judge_embeddings,
+    )
+    df = result.to_pandas()
+    return {
+        "context_precision": round(float(df["llm_context_precision_without_reference"].iloc[0]), 4),
+        "faithfulness": round(float(df["faithfulness"].iloc[0]), 4),
+        "answer_relevancy": round(float(df["answer_relevancy"].iloc[0]), 4),
+        "context_recall": None,
+    }
+
+
+def _run_ragas_with_reference(question: str, answer: str, contexts: List[str], ground_truth: str) -> Dict[str, Any]:
+    """Run all RAGAS metrics (including recall which needs ground_truth) in a blocking thread."""
+    judge_llm, judge_embeddings = get_judge()
+    ds = Dataset.from_dict({
+        "question": [question],
+        "answer": [answer],
+        "contexts": [contexts],
+        "ground_truth": [ground_truth],
+    })
+    result = evaluate(
+        dataset=ds,
+        metrics=[
+            LLMContextPrecisionWithoutReference(),
+            LLMContextRecall(),
+            Faithfulness(),
+            AnswerRelevancy(),
+        ],
+        llm=judge_llm,
+        embeddings=judge_embeddings,
+    )
+    df = result.to_pandas()
+    return {
+        "context_precision": round(float(df["llm_context_precision_without_reference"].iloc[0]), 4),
+        "faithfulness": round(float(df["faithfulness"].iloc[0]), 4),
+        "answer_relevancy": round(float(df["answer_relevancy"].iloc[0]), 4),
+        "context_recall": round(float(df["context_recall"].iloc[0]), 4),
+    }
+
+
+# ── Evaluate Endpoint ─────────────────────────────────────────────────────────
+
+class EvaluateRequest(BaseModel):
+    question: str
+    ground_truth: Optional[str] = None
+
+
+@app.post("/evaluate")
+async def evaluate_question(request: EvaluateRequest):
+    global vector_store
+    if vector_store is None:
+        raise HTTPException(status_code=400, detail="Please upload a file first.")
+
+    try:
+        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
+        retriever = vector_store.as_retriever(
+            search_type="mmr",
+            search_kwargs={"k": 10, "fetch_k": 30}
+        )
+        docs = retriever.invoke(request.question)
+        contexts = [doc.page_content for doc in docs]
+        context = "\n\n".join(contexts)
+
+        answer_prompt = f"""You are an expert analyst. Based on the following context, answer the question concisely.
+
+<CRITICAL_INSTRUCTIONS>
+1. ZERO HALLUCINATION: You must not use any outside knowledge, whatsoever.
+2. THE ESCAPE HATCH: If the answer cannot be fully constructed from the Context, you must reply exactly: "I do not have enough information in the provided documents to answer that."
+3. DIRECTNESS: Answer the user's question immediately and concisely.
+4. RELEVANCY: Address the exact question asked.
+</CRITICAL_INSTRUCTIONS>
+Context: {context}
+
+Question: {request.question}
+
+Answer:"""
+
+        answer_response = llm.invoke(answer_prompt)
+        answer_text = answer_response.content
+
+        if request.ground_truth:
+            scores = await asyncio.to_thread(
+                _run_ragas_with_reference,
+                request.question, answer_text, contexts, request.ground_truth
+            )
+        else:
+            scores = await asyncio.to_thread(
+                _run_ragas_reference_free,
+                request.question, answer_text, contexts
+            )
+
+        return {
+            "answer": answer_text,
+            "scores": scores,
+            "sources": [doc.metadata.get('page', 0) for doc in docs],
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error evaluating question: {str(e)}")
+
+
+# ── Batch Evaluate Endpoint ───────────────────────────────────────────────────
+
+@app.post("/batch-evaluate")
+async def batch_evaluate():
+    eval_path = os.path.join(os.path.dirname(__file__), "eval_data.json")
+    if not os.path.exists(eval_path):
+        raise HTTPException(status_code=404, detail="eval_data.json not found.")
+
+    try:
+        with open(eval_path, "r", encoding="utf-8") as f:
+            data_samples = json.load(f)
+
+        def _run_batch():
+            judge_llm, judge_embeddings = get_judge()
+            ds = Dataset.from_dict(data_samples)
+            result = evaluate(
+                dataset=ds,
+                metrics=[
+                    LLMContextPrecisionWithoutReference(),
+                    LLMContextRecall(),
+                    Faithfulness(),
+                    AnswerRelevancy(),
+                ],
+                llm=judge_llm,
+                embeddings=judge_embeddings,
+            )
+            df = result.to_pandas()
+            averages = {
+                "context_precision": round(float(df["llm_context_precision_without_reference"].mean()), 4),
+                "context_recall": round(float(df["context_recall"].mean()), 4),
+                "faithfulness": round(float(df["faithfulness"].mean()), 4),
+                "answer_relevancy": round(float(df["answer_relevancy"].mean()), 4),
+            }
+            details = []
+            for _, row in df.iterrows():
+                details.append({
+                    "question": row["question"],
+                    "answer": row["answer"],
+                    "context_precision": round(float(row["llm_context_precision_without_reference"]), 4),
+                    "context_recall": round(float(row["context_recall"]), 4),
+                    "faithfulness": round(float(row["faithfulness"]), 4),
+                    "answer_relevancy": round(float(row["answer_relevancy"]), 4),
+                })
+            return {"averages": averages, "details": details}
+
+        result = await asyncio.to_thread(_run_batch)
+        return result
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Batch evaluation error: {str(e)}")
+
 
 @app.post("/clear")
 async def clear_memory():
