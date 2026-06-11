@@ -1,81 +1,412 @@
-<div class="container">
-  <h1>RAG Document Assistant</h1>
-<button (click)="clearChat()" [disabled]="isLoading()" style="background-color: #dc3545;">
-      🗑️ Clear Memory
-    </button>
-<div class="upload-section">
-    
-    <div style="margin-bottom: 15px;">
-      <strong>Option 1: Upload a PDF</strong><br/>
-      <input type="file" (change)="onFileSelected($event)" accept=".pdf" [disabled]="isLoading()" style="margin-top: 5px;" />
-    </div>
+<div class="app-shell">
 
-    <div>
-      <strong>Option 2: Paste a Website URL</strong><br/>
-      <div style="display: flex; gap: 10px; margin-top: 5px;">
-        <input 
-          type="text" 
-          [(ngModel)]="websiteUrl" 
-          placeholder="https://en.wikipedia.org/wiki/Artificial_intelligence" 
-          [disabled]="isLoading()" 
-        />
-        <button (click)="onUrlSubmitted()" [disabled]="isLoading() || !websiteUrl">Read Site</button>
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">&#x26A1;</div>
+      <div>
+        <div class="logo-title">RAG Pipeline</div>
+        <div class="logo-sub">Production AI &middot; Gemini 2.5</div>
       </div>
     </div>
 
-    <div style="padding-top: 15px; border-top: 1px solid #ccc;">
-      <strong>Option 3: Analyze an Image (Direct Question)</strong><br/>
-      <input type="file" (change)="onImageSelected($event)" accept="image/png, image/jpeg" [disabled]="isLoading" style="margin-top: 5px;" />
-      
+    @if (pipelineStatus(); as status) {
+      <div class="status-pill" [class.ready]="status.ready" [class.idle]="!status.ready">
+        <span class="status-dot"></span>
+        <span>{{ status.ready ? status.chunk_count + ' chunks indexed' : 'No data indexed' }}</span>
+      </div>
+    } @else {
+      <div class="status-pill idle"><span class="status-dot"></span><span>Connecting&hellip;</span></div>
+    }
+
+    <div class="sidebar-section-title">Data Sources</div>
+
+    <!-- PDF Drop Zone -->
+    <div class="drop-zone" [class.dragging]="isDragging()"
+         (dragover)="onDragOver($event)" (dragleave)="onDragLeave()" (drop)="onDrop($event)">
+      <label class="drop-label" for="pdfInput">
+        <div class="drop-icon">&#x1F4C4;</div>
+        <div class="drop-text">Drop PDF here<br/><span>or click to browse</span></div>
+      </label>
+      <input id="pdfInput" type="file" accept=".pdf" (change)="onFileSelected($event)" [disabled]="isLoading()" hidden />
+    </div>
+
+    <!-- URL Input -->
+    <div class="url-input-group">
+      <span class="url-icon">&#x1F310;</span>
+      <input class="url-input" type="text" [(ngModel)]="websiteUrl"
+             placeholder="https://example.com" [disabled]="isLoading()" (keyup.enter)="onUrlSubmitted()" />
+      <button class="url-btn" (click)="onUrlSubmitted()" [disabled]="isLoading() || !websiteUrl">&#x21B5;</button>
+    </div>
+
+    <!-- Image Upload -->
+    <div class="image-upload-area">
+      <label for="imgInput" class="img-label"><span>&#x1F5BC;&#xFE0F; Analyze Image</span></label>
+      <input id="imgInput" type="file" accept="image/png,image/jpeg,image/webp" (change)="onImageSelected($event)" hidden />
       @if (imagePreviewUrl) {
-        <div style="margin-top: 10px; display: flex; align-items: flex-end; gap: 10px;">
-          <img [src]="imagePreviewUrl" alt="Preview" style="max-width: 150px; border-radius: 8px; border: 2px solid #007bff;" />
-          <button (click)="clearImage()" style="background-color: #6c757d; padding: 5px 10px; font-size: 12px;">Remove</button>
+        <div class="img-preview-wrap">
+          <img [src]="imagePreviewUrl" alt="Preview" class="img-preview" />
+          <button class="img-remove" (click)="clearImage()">&#x2715;</button>
         </div>
       }
     </div>
 
-    <p [class.success]="fileUploaded()" style="margin-top: 15px;">{{ uploadStatus() }}</p>
-  </div>
+    @if (uploadStatus()) {
+      <div class="upload-status" [class.success]="uploadSuccess()"
+           [class.error]="!uploadSuccess() && uploadStatus().startsWith('❌')">
+        {{ uploadStatus() }}
+      </div>
+    }
 
-  <hr />
+    @if (isLoading()) {
+      <div class="loading-bar"><div class="loading-bar-fill"></div></div>
+    }
 
-  @if (fileUploaded()) {
-    <div class="chat-container">
-      <div class="messages">
-        @for (msg of chatHistory(); track $index) {
-          <div [class]="'message ' + msg.sender">
-            <div class="bubble">
-              {{ msg.text }}
-              @if (msg.chartData && msg.chartData.labels.length > 0) {
-                <div class="chart-container">
-                  <canvas [id]="'chart-' + $index"></canvas>
-                </div>
-              }
+    @if (pipelineStatus()?.documents?.length) {
+      <div class="sidebar-section-title" style="margin-top:16px">Indexed</div>
+      <div class="doc-list">
+        @for (doc of pipelineStatus()!.documents; track doc.id) {
+          <div class="doc-item">
+            <span class="doc-icon">{{ docIcon(doc.type) }}</span>
+            <div class="doc-info">
+              <div class="doc-name" [title]="doc.name">{{ doc.name.length > 28 ? doc.name.slice(0,28) + '…' : doc.name }}</div>
+              <div class="doc-meta">{{ doc.chunks }} chunks &middot; {{ doc.elapsed_ms }}ms</div>
             </div>
           </div>
         }
-        @if (isLoading() && chatHistory().length > 1) {
-          <div class="loading-indicator">
-            Thinking...
+      </div>
+    }
+
+    <div class="sidebar-footer">
+      <button class="clear-btn" (click)="clearChat()" [disabled]="isLoading()">
+        &#x1F5D1; Clear Pipeline
+      </button>
+    </div>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <main class="main-content">
+
+    <nav class="tab-bar">
+      <button class="tab-btn" [class.active]="activeTab() === 'chat'" (click)="setTab('chat')">
+        <span class="tab-icon">&#x1F4AC;</span> Chat
+      </button>
+      <button class="tab-btn" [class.active]="activeTab() === 'evaluate'" (click)="setTab('evaluate')">
+        <span class="tab-icon">&#x1F3AF;</span> Evaluate
+      </button>
+      <button class="tab-btn" [class.active]="activeTab() === 'observability'" (click)="setTab('observability')">
+        <span class="tab-icon">&#x1F4CA;</span> Observability
+      </button>
+    </nav>
+
+    <!-- CHAT TAB -->
+    @if (activeTab() === 'chat') {
+      <div class="tab-pane chat-pane">
+        @if (!fileUploaded()) {
+          <div class="welcome-state">
+            <div class="welcome-icon">&#x26A1;</div>
+            <h2 class="welcome-title">RAG Pipeline Ready</h2>
+            <p class="welcome-sub">Index a PDF, website, or image in the sidebar to start chatting.</p>
+            <div class="welcome-features">
+              <div class="feature-chip">&#x1F4C4; PDF Ingestion</div>
+              <div class="feature-chip">&#x1F310; Web Scraping</div>
+              <div class="feature-chip">&#x1F5BC;&#xFE0F; Vision Analysis</div>
+              <div class="feature-chip">&#x1F50D; MMR Retrieval</div>
+              <div class="feature-chip">&#x1F3AF; RAGAS Eval</div>
+              <div class="feature-chip">&#x1F4C8; Observability</div>
+            </div>
+          </div>
+        } @else {
+          <div class="messages-area">
+            @for (msg of chatHistory(); track msg.id) {
+              <div class="msg-row" [class.user-row]="msg.sender === 'user'" [class.bot-row]="msg.sender === 'bot'">
+                @if (msg.sender === 'bot') { <div class="bot-avatar">&#x26A1;</div> }
+                <div class="bubble" [class.user-bubble]="msg.sender === 'user'" [class.bot-bubble]="msg.sender === 'bot'">
+                  @if (msg.isTyping) {
+                    <div class="typing-dots"><span></span><span></span><span></span></div>
+                  } @else {
+                    <div class="msg-text">{{ msg.text }}</div>
+                    @if (msg.chartData && msg.chartData.labels.length > 0) {
+                      <div class="chart-wrap"><canvas [id]="'chart-' + msg.id" style="max-height:260px"></canvas></div>
+                    }
+                    @if (msg.sender === 'bot' && (msg.traceId || msg.sources?.length)) {
+                      <div class="msg-meta">
+                        @if (msg.traceId) { <span class="meta-badge trace-badge">&#x1F50E; {{ msg.traceId }}</span> }
+                        @if (msg.retrieval_ms !== undefined) { <span class="meta-badge time-badge">&#x21A9; {{ msg.retrieval_ms }}ms</span> }
+                        @if (msg.generation_ms !== undefined) { <span class="meta-badge time-badge">&#x2736; {{ msg.generation_ms }}ms</span> }
+                        @if (msg.sources?.length) { <span class="meta-badge src-badge">&#x1F4CC; {{ uniqueSources(msg.sources) }}</span> }
+                      </div>
+                    }
+                    @if (msg.scores) {
+                      <div class="score-row">
+                        <div class="score-chip" [style.border-color]="scoreColor(msg.scores.context_precision)">
+                          <span class="score-label">Precision</span>
+                          <span class="score-val" [style.color]="scoreColor(msg.scores.context_precision)">{{ pct(msg.scores.context_precision) }}</span>
+                        </div>
+                        <div class="score-chip" [style.border-color]="scoreColor(msg.scores.faithfulness)">
+                          <span class="score-label">Faithful</span>
+                          <span class="score-val" [style.color]="scoreColor(msg.scores.faithfulness)">{{ pct(msg.scores.faithfulness) }}</span>
+                        </div>
+                        <div class="score-chip" [style.border-color]="scoreColor(msg.scores.answer_relevancy)">
+                          <span class="score-label">Relevancy</span>
+                          <span class="score-val" [style.color]="scoreColor(msg.scores.answer_relevancy)">{{ pct(msg.scores.answer_relevancy) }}</span>
+                        </div>
+                      </div>
+                    }
+                    <div class="msg-time">{{ fmtTime(msg.timestamp) }}</div>
+                  }
+                </div>
+                @if (msg.sender === 'user') { <div class="user-avatar">U</div> }
+              </div>
+            }
+            <div #messagesEnd></div>
+          </div>
+
+          <div class="input-bar">
+            @if (imagePreviewUrl) {
+              <div class="input-img-preview">
+                <img [src]="imagePreviewUrl" alt="img" />
+                <button (click)="clearImage()">&#x2715;</button>
+              </div>
+            }
+            <div class="input-row">
+              <input class="chat-input" type="text" [(ngModel)]="userQuestion"
+                     [placeholder]="selectedImage ? 'Ask about the image…' : 'Ask a question about your documents…'"
+                     [disabled]="isLoading()" (keyup.enter)="sendMessage()" />
+              <label class="eval-toggle" title="Enable RAGAS scoring (slower)">
+                <input type="checkbox" [(ngModel)]="enableEval" />
+                <span class="eval-toggle-label">Eval</span>
+              </label>
+              <button class="send-btn" (click)="sendMessage()" [disabled]="isLoading() || !userQuestion.trim()">
+                @if (isLoading()) { <span class="spin">&#x27F3;</span> } @else { <span>&#x25B6;</span> }
+              </button>
+            </div>
           </div>
         }
       </div>
+    }
 
-<div class="input-area">
-    <input 
-      type="text" 
-      [(ngModel)]="userQuestion" 
-      (keyup.enter)="selectedImage ? sendImageQuestion() : sendMessage()" 
-      placeholder="Ask a question about the documents, or the uploaded image..." 
-      [disabled]="isLoading()"
-    />
-    <button 
-      (click)="selectedImage ? sendImageQuestion() : sendMessage()" 
-      [disabled]="isLoading() || !userQuestion().trim()">
-      Send
-    </button>
-  </div>
-    </div>
-  }
+    <!-- EVALUATE TAB -->
+    @if (activeTab() === 'evaluate') {
+      <div class="tab-pane eval-pane">
+
+        <div class="eval-card">
+          <div class="eval-card-header">
+            <span class="eval-card-icon">&#x1F3AF;</span>
+            <div>
+              <div class="eval-card-title">Single Question Evaluation</div>
+              <div class="eval-card-sub">RAGAS: Context Precision &middot; Faithfulness &middot; Answer Relevancy &middot; Context Recall</div>
+            </div>
+          </div>
+          <div class="eval-form">
+            <label class="form-label">Question</label>
+            <textarea class="form-textarea" [(ngModel)]="evalQuestion"
+                      placeholder="Enter any question to evaluate against indexed documents…" rows="2"></textarea>
+            <label class="form-label">
+              Ground Truth <span class="form-optional">(optional &mdash; enables Context Recall)</span>
+            </label>
+            <textarea class="form-textarea" [(ngModel)]="evalGroundTruth"
+                      placeholder="Expected answer for recall measurement…" rows="2"></textarea>
+            <button class="eval-run-btn" (click)="runEval()"
+                    [disabled]="isEvaluating() || !evalQuestion.trim() || !fileUploaded()">
+              @if (isEvaluating()) { <span class="spin">&#x27F3;</span> Running RAGAS&hellip; }
+              @else { &#x1F9EA; Run Evaluation }
+            </button>
+            @if (!fileUploaded()) {
+              <div class="eval-warning">&#x26A0; Index at least one document first.</div>
+            }
+          </div>
+
+          @if (evalAnswer()) {
+            <div class="eval-results">
+              <div class="eval-answer-block">
+                <div class="eval-answer-label">Generated Answer</div>
+                <div class="eval-answer-text">{{ evalAnswer() }}</div>
+              </div>
+              @if (evalScores(); as scores) {
+                <div class="score-grid">
+                  <div class="score-card" [style.--accent]="scoreColor(scores.context_precision)">
+                    <div class="score-card-val" [style.color]="scoreColor(scores.context_precision)">{{ pct(scores.context_precision) }}</div>
+                    <div class="score-card-label">Context Precision</div>
+                    <div class="score-card-sub">{{ scoreLabel(scores.context_precision) }}</div>
+                    <div class="score-bar"><div class="score-bar-fill" [style.width]="(scores.context_precision ?? 0)*100+'%'" [style.background]="scoreColor(scores.context_precision)"></div></div>
+                  </div>
+                  <div class="score-card" [style.--accent]="scoreColor(scores.faithfulness)">
+                    <div class="score-card-val" [style.color]="scoreColor(scores.faithfulness)">{{ pct(scores.faithfulness) }}</div>
+                    <div class="score-card-label">Faithfulness</div>
+                    <div class="score-card-sub">{{ scoreLabel(scores.faithfulness) }}</div>
+                    <div class="score-bar"><div class="score-bar-fill" [style.width]="(scores.faithfulness ?? 0)*100+'%'" [style.background]="scoreColor(scores.faithfulness)"></div></div>
+                  </div>
+                  <div class="score-card" [style.--accent]="scoreColor(scores.answer_relevancy)">
+                    <div class="score-card-val" [style.color]="scoreColor(scores.answer_relevancy)">{{ pct(scores.answer_relevancy) }}</div>
+                    <div class="score-card-label">Answer Relevancy</div>
+                    <div class="score-card-sub">{{ scoreLabel(scores.answer_relevancy) }}</div>
+                    <div class="score-bar"><div class="score-bar-fill" [style.width]="(scores.answer_relevancy ?? 0)*100+'%'" [style.background]="scoreColor(scores.answer_relevancy)"></div></div>
+                  </div>
+                  @if (scores.context_recall !== null) {
+                    <div class="score-card" [style.--accent]="scoreColor(scores.context_recall)">
+                      <div class="score-card-val" [style.color]="scoreColor(scores.context_recall)">{{ pct(scores.context_recall) }}</div>
+                      <div class="score-card-label">Context Recall</div>
+                      <div class="score-card-sub">{{ scoreLabel(scores.context_recall) }}</div>
+                      <div class="score-bar"><div class="score-bar-fill" [style.width]="(scores.context_recall || 0)*100+'%'" [style.background]="scoreColor(scores.context_recall)"></div></div>
+                    </div>
+                  }
+                </div>
+                <div class="radar-wrap"><canvas id="eval-radar" height="260"></canvas></div>
+              }
+            </div>
+          }
+        </div>
+
+        <div class="eval-card">
+          <div class="eval-card-header">
+            <span class="eval-card-icon">&#x1F4E6;</span>
+            <div>
+              <div class="eval-card-title">Batch Evaluation</div>
+              <div class="eval-card-sub">Runs all samples in eval_data.json with all 4 RAGAS metrics</div>
+            </div>
+          </div>
+          <button class="eval-run-btn batch-btn" (click)="runBatchEval()" [disabled]="isBatchRunning()">
+            @if (isBatchRunning()) { <span class="spin">&#x27F3;</span> Evaluating batch&hellip; }
+            @else { &#x1F680; Run Batch Evaluation }
+          </button>
+
+          @if (batchResult(); as batch) {
+            <div class="batch-results">
+              <div class="batch-averages">
+                <div class="batch-avg-item">
+                  <span class="batch-avg-label">Context Precision</span>
+                  <span class="batch-avg-val" [style.color]="scoreColor(batch.averages.context_precision)">{{ pct(batch.averages.context_precision) }}</span>
+                </div>
+                <div class="batch-avg-item">
+                  <span class="batch-avg-label">Context Recall</span>
+                  <span class="batch-avg-val" [style.color]="scoreColor(batch.averages.context_recall)">{{ pct(batch.averages.context_recall) }}</span>
+                </div>
+                <div class="batch-avg-item">
+                  <span class="batch-avg-label">Faithfulness</span>
+                  <span class="batch-avg-val" [style.color]="scoreColor(batch.averages.faithfulness)">{{ pct(batch.averages.faithfulness) }}</span>
+                </div>
+                <div class="batch-avg-item">
+                  <span class="batch-avg-label">Answer Relevancy</span>
+                  <span class="batch-avg-val" [style.color]="scoreColor(batch.averages.answer_relevancy)">{{ pct(batch.averages.answer_relevancy) }}</span>
+                </div>
+              </div>
+              <div class="bar-wrap"><canvas id="batch-bar" height="200"></canvas></div>
+              <div class="batch-table-wrap">
+                <table class="batch-table">
+                  <thead><tr><th>Question</th><th>Precision</th><th>Recall</th><th>Faithful</th><th>Relevancy</th></tr></thead>
+                  <tbody>
+                    @for (row of batch.details; track $index) {
+                      <tr>
+                        <td class="q-cell">{{ row.question.length > 50 ? row.question.slice(0,50)+'…' : row.question }}</td>
+                        <td [style.color]="scoreColor(row.context_precision)">{{ pct(row.context_precision) }}</td>
+                        <td [style.color]="scoreColor(row.context_recall)">{{ pct(row.context_recall) }}</td>
+                        <td [style.color]="scoreColor(row.faithfulness)">{{ pct(row.faithfulness) }}</td>
+                        <td [style.color]="scoreColor(row.answer_relevancy)">{{ pct(row.answer_relevancy) }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+    }
+
+    <!-- OBSERVABILITY TAB -->
+    @if (activeTab() === 'observability') {
+      <div class="tab-pane obs-pane">
+        <div class="obs-toolbar">
+          <span class="obs-title">Pipeline Observability</span>
+          <button class="refresh-btn" (click)="loadObservability()" [disabled]="isLoadingObs()">
+            <span [class.spin]="isLoadingObs()">&#x27F3;</span> Refresh
+          </button>
+        </div>
+
+        @if (pipelineStatus(); as status) {
+          <div class="obs-stats">
+            <div class="obs-stat-card">
+              <div class="obs-stat-val" [style.color]="status.ready ? '#10b981' : '#ef4444'">{{ status.ready ? 'Online' : 'Idle' }}</div>
+              <div class="obs-stat-label">Pipeline Status</div>
+            </div>
+            <div class="obs-stat-card">
+              <div class="obs-stat-val">{{ status.chunk_count }}</div>
+              <div class="obs-stat-label">Indexed Chunks</div>
+            </div>
+            <div class="obs-stat-card">
+              <div class="obs-stat-val">{{ status.document_count }}</div>
+              <div class="obs-stat-label">Documents</div>
+            </div>
+            <div class="obs-stat-card">
+              <div class="obs-stat-val">{{ traces().length }}</div>
+              <div class="obs-stat-label">Query Traces</div>
+            </div>
+          </div>
+        }
+
+        @if (pipelineStatus()?.documents?.length) {
+          <div class="obs-section">
+            <div class="obs-section-title">&#x1F4E5; Ingestion Registry</div>
+            <div class="obs-table-wrap">
+              <table class="obs-table">
+                <thead><tr><th>ID</th><th>Source</th><th>Type</th><th>Pages</th><th>Chunks</th><th>Ingested At</th><th>Latency</th></tr></thead>
+                <tbody>
+                  @for (doc of pipelineStatus()!.documents; track doc.id) {
+                    <tr>
+                      <td><code class="mono">{{ doc.id }}</code></td>
+                      <td class="q-cell" [title]="doc.name">{{ doc.name.length > 40 ? doc.name.slice(0,40)+'…' : doc.name }}</td>
+                      <td><span class="type-badge">{{ doc.type }}</span></td>
+                      <td>{{ doc.pages }}</td>
+                      <td>{{ doc.chunks }}</td>
+                      <td>{{ fmtTs(doc.ingested_at) }}</td>
+                      <td>{{ doc.elapsed_ms }}ms</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </div>
+        }
+
+        <div class="obs-section">
+          <div class="obs-section-title">&#x1F50D; Query Trace Log</div>
+          @if (!traces().length) {
+            <div class="obs-empty">No traces yet &mdash; send a question in the Chat tab.</div>
+          } @else {
+            <div class="obs-table-wrap">
+              <table class="obs-table">
+                <thead><tr><th>Trace ID</th><th>Question</th><th>Chunks</th><th>Retrieve</th><th>Generate</th><th>Total</th><th>Eval</th><th>Time</th></tr></thead>
+                <tbody>
+                  @for (trace of traces(); track trace.trace_id) {
+                    <tr>
+                      <td><code class="mono">{{ trace.trace_id }}</code></td>
+                      <td class="q-cell" [title]="trace.question">{{ trace.question.length > 45 ? trace.question.slice(0,45)+'…' : trace.question }}</td>
+                      <td>{{ trace.chunks_retrieved }}</td>
+                      <td class="latency-cell">{{ trace.retrieval_ms }}ms</td>
+                      <td class="latency-cell">{{ trace.generation_ms }}ms</td>
+                      <td class="latency-cell total-latency">{{ trace.total_ms }}ms</td>
+                      <td>
+                        @if (trace.evaluated && trace.scores) {
+                          <span class="eval-pill"
+                                [style.background]="scoreColor(trace.scores.faithfulness) + '22'"
+                                [style.color]="scoreColor(trace.scores.faithfulness)">
+                            F:{{ pct(trace.scores.faithfulness) }}
+                          </span>
+                        } @else {
+                          <span class="no-eval">&mdash;</span>
+                        }
+                      </td>
+                      <td>{{ fmtTs(trace.timestamp) }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        </div>
+      </div>
+    }
+
+  </main>
 </div>

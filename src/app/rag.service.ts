@@ -7,44 +7,131 @@ export interface ChartData {
   values: number[];
 }
 
+export interface RagasScores {
+  context_precision: number | null;
+  faithfulness: number | null;
+  answer_relevancy: number | null;
+  context_recall: number | null;
+}
+
 export interface AskResponse {
   answer: string;
   sources: number[];
   chartData: ChartData | null;
+  scores: RagasScores | null;
+  traceId: string;
+  retrieval_ms: number;
+  generation_ms: number;
 }
 
-@Injectable({
-  providedIn: 'root'
-})
+export interface EvaluateResponse {
+  answer: string;
+  scores: RagasScores;
+  sources: number[];
+  traceId: string;
+}
+
+export interface BatchAverages {
+  context_precision: number;
+  context_recall: number;
+  faithfulness: number;
+  answer_relevancy: number;
+}
+
+export interface BatchDetailRow {
+  question: string;
+  answer: string;
+  context_precision: number;
+  context_recall: number;
+  faithfulness: number;
+  answer_relevancy: number;
+}
+
+export interface BatchEvaluateResponse {
+  averages: BatchAverages;
+  details: BatchDetailRow[];
+}
+
+export interface DocumentInfo {
+  id: string;
+  name: string;
+  type: 'pdf' | 'url' | 'image';
+  pages: number;
+  chunks: number;
+  total_chunks: number;
+  ingested_at: string;
+  elapsed_ms: number;
+}
+
+export interface PipelineStatus {
+  ready: boolean;
+  chunk_count: number;
+  document_count: number;
+  documents: DocumentInfo[];
+  timestamp: string;
+}
+
+export interface QueryTrace {
+  trace_id: string;
+  question: string;
+  chunks_retrieved: number;
+  retrieval_ms: number;
+  generation_ms: number;
+  total_ms: number;
+  sources: (number | string)[];
+  source_names: string[];
+  evaluated: boolean;
+  scores: RagasScores | null;
+  timestamp: string;
+}
+
+@Injectable({ providedIn: 'root' })
 export class RagService {
   private apiUrl = 'http://localhost:8000';
 
-  constructor(private http: HttpClient) { }
+  constructor(private http: HttpClient) {}
 
   uploadFile(file: File): Observable<any> {
-    const formData = new FormData();
-    formData.append('file', file);
-    return this.http.post(`${this.apiUrl}/upload`, formData);
-  }
-
-  askQuestion(question: string): Observable<AskResponse> {
-    return this.http.post<AskResponse>(`${this.apiUrl}/ask`, { question });
+    const fd = new FormData();
+    fd.append('file', file);
+    return this.http.post(`${this.apiUrl}/upload`, fd);
   }
 
   processUrl(url: string): Observable<any> {
     return this.http.post(`${this.apiUrl}/url`, { url });
   }
 
-  clearMemory(): Observable<any> {
-    return this.http.post(`${this.apiUrl}/clear`, {});
+  askQuestion(question: string, withEval = false): Observable<AskResponse> {
+    return this.http.post<AskResponse>(`${this.apiUrl}/ask`, { question, evaluate: withEval });
+  }
+
+  evaluate(question: string, groundTruth?: string): Observable<EvaluateResponse> {
+    return this.http.post<EvaluateResponse>(`${this.apiUrl}/evaluate`, {
+      question,
+      ground_truth: groundTruth ?? null,
+    });
+  }
+
+  batchEvaluate(): Observable<BatchEvaluateResponse> {
+    return this.http.post<BatchEvaluateResponse>(`${this.apiUrl}/batch-evaluate`, {});
   }
 
   analyzeImage(file: File, question: string): Observable<any> {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('question', question);
-    
-    return this.http.post(`${this.apiUrl}/analyze-image`, formData);
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('question', question);
+    return this.http.post(`${this.apiUrl}/analyze-image`, fd);
   }
-  
+
+  getStatus(): Observable<PipelineStatus> {
+    return this.http.get<PipelineStatus>(`${this.apiUrl}/status`);
+  }
+
+  getTraces(): Observable<{ traces: QueryTrace[] }> {
+    return this.http.get<{ traces: QueryTrace[] }>(`${this.apiUrl}/traces`);
+  }
+
+  clearMemory(): Observable<any> {
+    return this.http.post(`${this.apiUrl}/clear`, {});
+  }
 }

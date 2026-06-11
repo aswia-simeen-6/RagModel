@@ -1,1 +1,32 @@
-/* You can add global styles to this file, and also import other style files */
+/* ── Global Resets ── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: #0a0a0f;
+  color: #e2e8f0;
+  font-family: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #2d2d44; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #3d3d5c; }
+
+/* Remove default button outline on modern browsers */
+button:focus-visible { outline: 2px solid #6366f1; outline-offset: 2px; }
+
+/* Smooth transitions for interactive elements */
+a, button, input, textarea, select, label {
+  transition: color 0.15s, background 0.15s, border-color 0.15s, opacity 0.15s;
+}

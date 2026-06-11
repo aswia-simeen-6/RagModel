@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+langchain
+langchain-google-genai
+langchain-chroma
+langchain-community
+chromadb
+pypdf
+pillow
+ragas
+python-multipart
+requests
+beautifulsoup4
+python-dotenv
+datasets
