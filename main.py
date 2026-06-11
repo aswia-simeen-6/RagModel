@@ -482,9 +482,10 @@ async def analyze_image(file: UploadFile = File(...), question: str = Form(...))
         image_data = await file.read()
         image_b64 = base64.b64encode(image_data).decode("utf-8")
         llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
+        mime_type = file.content_type or "image/jpeg"
         message = HumanMessage(content=[
             {"type": "text", "text": question},
-            {"type": "image_url", "image_url": {"url": f"data:{file.content_type};base64,{image_b64}"}}
+            {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{image_b64}"}}
         ])
         response = llm.invoke([message])
         total_ms = int((datetime.now(timezone.utc) - t_start).total_seconds() * 1000)

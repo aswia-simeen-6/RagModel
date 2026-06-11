@@ -65,8 +65,8 @@ export class RagComponent implements AfterViewChecked, OnDestroy {
   private shouldScroll = false;
 
   // ── Image state ───────────────────────────────────────────────────────────────
-  selectedImage: File | null = null;
-  imagePreviewUrl: string | ArrayBuffer | null = null;
+  selectedImage = signal<File | null>(null);
+  imagePreviewUrl = signal<string | ArrayBuffer | null>(null);
 
   // ── Evaluate state ────────────────────────────────────────────────────────────
   evalQuestion = '';
@@ -186,17 +186,17 @@ export class RagComponent implements AfterViewChecked, OnDestroy {
   onImageSelected(event: Event) {
     const file = (event.target as HTMLInputElement).files?.[0];
     if (!file) return;
-    this.selectedImage = file;
+    this.selectedImage.set(file);
     const reader = new FileReader();
     reader.onload = (e) => {
-      this.imagePreviewUrl = e.target?.result ?? null;
+      this.imagePreviewUrl.set(e.target?.result ?? null);
     };
     reader.readAsDataURL(file);
   }
 
   clearImage() {
-    this.selectedImage = null;
-    this.imagePreviewUrl = null;
+    this.selectedImage.set(null);
+    this.imagePreviewUrl.set(null);
   }
 
   // ── Chat ──────────────────────────────────────────────────────────────────────
@@ -209,7 +209,7 @@ export class RagComponent implements AfterViewChecked, OnDestroy {
   }
 
   sendMessage() {
-    if (this.selectedImage && this.userQuestion.trim()) {
+    if (this.selectedImage() && this.userQuestion.trim()) {
       this.sendImageQuestion();
       return;
     }
@@ -268,7 +268,8 @@ export class RagComponent implements AfterViewChecked, OnDestroy {
   }
 
   sendImageQuestion() {
-    if (!this.selectedImage || !this.userQuestion.trim()) return;
+    const img = this.selectedImage();
+    if (!img || !this.userQuestion.trim()) return;
     const question = this.userQuestion;
     this.chatHistory.update((h) => [
       ...h,
@@ -277,7 +278,7 @@ export class RagComponent implements AfterViewChecked, OnDestroy {
     this.userQuestion = '';
     this.isLoading.set(true);
 
-    this.ragService.analyzeImage(this.selectedImage, question).subscribe({
+    this.ragService.analyzeImage(img, question).subscribe({
       next: (res) => {
         this.addBotMessage(res.answer);
         this.isLoading.set(false);

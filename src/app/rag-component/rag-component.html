@@ -43,9 +43,9 @@
     <div class="image-upload-area">
       <label for="imgInput" class="img-label"><span>&#x1F5BC;&#xFE0F; Analyze Image</span></label>
       <input id="imgInput" type="file" accept="image/png,image/jpeg,image/webp" (change)="onImageSelected($event)" hidden />
-      @if (imagePreviewUrl) {
+      @if (imagePreviewUrl()) {
         <div class="img-preview-wrap">
-          <img [src]="imagePreviewUrl" alt="Preview" class="img-preview" />
+          <img [src]="imagePreviewUrl()" alt="Preview" class="img-preview" />
           <button class="img-remove" (click)="clearImage()">&#x2715;</button>
         </div>
       }
@@ -163,15 +163,15 @@
           </div>
 
           <div class="input-bar">
-            @if (imagePreviewUrl) {
+            @if (imagePreviewUrl()) {
               <div class="input-img-preview">
-                <img [src]="imagePreviewUrl" alt="img" />
+                <img [src]="imagePreviewUrl()" alt="img" />
                 <button (click)="clearImage()">&#x2715;</button>
               </div>
             }
             <div class="input-row">
               <input class="chat-input" type="text" [(ngModel)]="userQuestion"
-                     [placeholder]="selectedImage ? 'Ask about the image…' : 'Ask a question about your documents…'"
+                     [placeholder]="selectedImage() ? 'Ask about the image…' : 'Ask a question about your documents…'"
                      [disabled]="isLoading()" (keyup.enter)="sendMessage()" />
               <label class="eval-toggle" title="Enable RAGAS scoring (slower)">
                 <input type="checkbox" [(ngModel)]="enableEval" />
