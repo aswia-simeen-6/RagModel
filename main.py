@@ -50,7 +50,7 @@ _judge_embeddings = None
 def get_judge():
     global _judge_llm, _judge_embeddings
     if _judge_llm is None:
-        _judge_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
+        _judge_llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0)
         _judge_embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
     return _judge_llm, _judge_embeddings
 
