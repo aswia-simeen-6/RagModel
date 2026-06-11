@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: rag-backend
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: USER_AGENT
+        value: rag-pipeline/1.0
+
+  - type: web
+    name: rag-frontend
+    runtime: static
+    buildCommand: npm install && npx ng build --configuration production && sed -i "s|__API_URL__|$API_URL|g" dist/rag-ui/browser/index.html
+    staticPublishPath: dist/rag-ui/browser
+    envVars:
+      - key: API_URL
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

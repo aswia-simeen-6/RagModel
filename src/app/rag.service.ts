@@ -87,7 +87,7 @@ export interface QueryTrace {
 
 @Injectable({ providedIn: 'root' })
 export class RagService {
-  private apiUrl = 'http://localhost:8000';
+  private apiUrl = (window as any).__API_URL__ || 'http://localhost:8000';
 
   constructor(private http: HttpClient) {}
 
