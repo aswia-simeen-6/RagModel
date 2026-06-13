@@ -1,4 +1,4 @@
 export const environment = {
   production: true,
-  apiUrl: '__API_URL__'
+  apiUrl: 'https://rag-backend-icec.onrender.com'
 };
