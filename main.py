@@ -1,10 +1,28 @@
 import os
+import sys
+import types
 import shutil
 import json
 import re
 import asyncio
 import uuid
 from datetime import datetime, timezone
+
+# ── Compatibility Patch ───────────────────────────────────────────────────────
+# ragas 0.4.x imports ChatVertexAI from langchain_community.chat_models.vertexai,
+# which was removed in langchain-community 0.4.0 (moved to langchain-google-vertexai).
+# Since this project doesn't use VertexAI, we inject a stub to satisfy the import.
+if "langchain_community.chat_models.vertexai" not in sys.modules:
+    _vertexai_stub = types.ModuleType("langchain_community.chat_models.vertexai")
+
+    class _ChatVertexAI:
+        """Stub — only here to satisfy ragas' import. Not used in this project."""
+        pass
+
+    _vertexai_stub.ChatVertexAI = _ChatVertexAI
+    sys.modules["langchain_community.chat_models.vertexai"] = _vertexai_stub
+# ─────────────────────────────────────────────────────────────────────────────
+
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
