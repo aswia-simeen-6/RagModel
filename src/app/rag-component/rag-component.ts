@@ -142,6 +142,11 @@ export class RagComponent implements AfterViewChecked, OnDestroy {
 
     this.ragService.uploadFile(file).subscribe({
       next: (res) => {
+        if (!res) {
+          this.uploadStatus.set('❌ Backend is starting up — please wait a moment and try again.');
+          this.isLoading.set(false);
+          return;
+        }
         this.fileUploaded.set(true);
         this.uploadSuccess.set(true);
         this.uploadStatus.set(`✓ "${file.name}" — ${res.chunk_count} chunks indexed`);
@@ -167,6 +172,11 @@ export class RagComponent implements AfterViewChecked, OnDestroy {
 
     this.ragService.processUrl(url).subscribe({
       next: (res) => {
+        if (!res) {
+          this.uploadStatus.set('❌ Backend is starting up — please wait a moment and try again.');
+          this.isLoading.set(false);
+          return;
+        }
         this.fileUploaded.set(true);
         this.uploadSuccess.set(true);
         this.uploadStatus.set(`✓ Website indexed — ${res.chunk_count} chunks`);
@@ -341,8 +351,18 @@ export class RagComponent implements AfterViewChecked, OnDestroy {
 
   loadStatus() {
     this.ragService.getStatus().subscribe({
-      next: (s) => this.pipelineStatus.set(s),
-      error: () => {},
+      next: (s) => {
+        if (!s) {
+          // Backend is cold-starting — retry after 5 seconds
+          setTimeout(() => this.loadStatus(), 5000);
+          return;
+        }
+        this.pipelineStatus.set(s);
+      },
+      error: () => {
+        // Retry on error too (e.g. backend still waking up)
+        setTimeout(() => this.loadStatus(), 5000);
+      },
     });
   }
 
